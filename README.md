@@ -42,9 +42,22 @@ After setup, use **Configure** on the integration to enable/disable individual r
 
 ## Requirements
 
-- Home Assistant 2024.1 or later
+- Home Assistant 2024.1 or later (2026.3+ for local brand icons/logos)
 - Binary MoIP controller reachable on your LAN
 - The integration installs the `binary-moip` Python package automatically
+
+## Brand images
+
+Starting with Home Assistant 2026.3, icons and logos are loaded from `custom_components/binary_moip/brand/`. Images must meet the [Home Assistant brand image specs](https://developers.home-assistant.io/docs/core/integration/brand_images/):
+
+| File | Size |
+|------|------|
+| `icon.png` | 256 × 256 (square) |
+| `icon@2x.png` | 512 × 512 |
+| `logo.png` | shortest side 128–256 |
+| `logo@2x.png` | shortest side 256–512 |
+
+After updating brand assets, restart Home Assistant or reload the integration.
 
 ## Development
 
