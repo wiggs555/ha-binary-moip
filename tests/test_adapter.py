@@ -14,11 +14,25 @@ MoIPReceiver = adapter_mod.MoIPReceiver
 MoIPState = adapter_mod.MoIPState
 MoIPTransmitter = adapter_mod.MoIPTransmitter
 _normalize_state = adapter_mod._normalize_state
+_extract_unit_ids = adapter_mod._extract_unit_ids
 build_rest_base_url = adapter_mod.build_rest_base_url
 probe_api_mode = adapter_mod.probe_api_mode
 
 API_MODE_REST = "rest"
 API_MODE_TCP = "tcp"
+
+
+def test_extract_unit_ids_dict_items() -> None:
+    assert _extract_unit_ids({"items": [1, 2, 3]}) == [1, 2, 3]
+
+
+def test_extract_unit_ids_list_of_dicts() -> None:
+    assert _extract_unit_ids([{"id": 10}, {"id": 20}]) == [10, 20]
+
+
+def test_extract_unit_ids_empty() -> None:
+    assert _extract_unit_ids(None) == []
+    assert _extract_unit_ids({}) == []
 
 
 def test_build_rest_base_url_default_port() -> None:

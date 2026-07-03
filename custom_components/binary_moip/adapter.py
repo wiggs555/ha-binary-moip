@@ -79,6 +79,23 @@ def build_rest_base_url(host: str, https_port: int) -> str:
     return f"https://{host}:{https_port}"
 
 
+def _extract_unit_ids(unit_list: Any) -> list[int]:
+    """Parse unit list responses (array or {items: [...]})."""
+    if unit_list is None:
+        return []
+    if isinstance(unit_list, list):
+        ids: list[int] = []
+        for item in unit_list:
+            if isinstance(item, dict):
+                ids.append(int(item["id"]))
+            else:
+                ids.append(int(item))
+        return ids
+    if isinstance(unit_list, dict):
+        return [int(i) for i in unit_list.get("items", [])]
+    return []
+
+
 async def probe_api_mode(
     host: str,
     username: str,
@@ -203,10 +220,10 @@ class MoIPAdapter:
         units: dict[int, dict[str, Any]] = {}
 
         unit_list = await self._rest.moip.list_unit()
-        unit_ids = [int(i) for i in (unit_list or {}).get("items", [])]
+        unit_ids = _extract_unit_ids(unit_list)
 
         unit_objs = await asyncio.gather(
-            *(self._rest.moip.get_unit_id(uid) for uid in unit_ids)
+            *(self._rest.moip.get_moip_unit_id(uid) for uid in unit_ids)
         )
 
         group_rx_ids: list[int] = []
@@ -225,10 +242,10 @@ class MoIPAdapter:
 
         rx_objs, tx_objs = await asyncio.gather(
             asyncio.gather(
-                *(self._rest.moip.get_group_rx_id(rid) for rid in group_rx_ids)
+                *(self._rest.moip.get_moip_group_rx_id(rid) for rid in group_rx_ids)
             ),
             asyncio.gather(
-                *(self._rest.moip.get_group_tx_id(tid) for tid in group_tx_ids)
+                *(self._rest.moip.get_moip_group_tx_id(tid) for tid in group_tx_ids)
             ),
         )
 
@@ -239,7 +256,7 @@ class MoIPAdapter:
 
         audio_tx_objs = await asyncio.gather(
             *(
-                self._rest.moip.get_audio_tx_id(atx_id)
+                self._rest.moip.get_moip_audio_tx_id(atx_id)
                 if atx_id is not None
                 else _async_none()
                 for atx_id in audio_tx_ids
@@ -326,7 +343,7 @@ class MoIPAdapter:
         """Route a transmitter to a receiver, or disconnect when None."""
         if self.api_mode == API_MODE_REST:
             assert self._rest is not None
-            await self._rest.moip.put_group_rx_id(
+            await self._rest.moip.put_moip_group_rx_id(
                 receiver_id,
                 json={"associations": {"paired_tx": transmitter_id}},
             )
