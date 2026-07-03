@@ -1,0 +1,15 @@
+[project]
+name = "ha-binary-moip-tests"
+version = "0.0.0"
+requires-python = ">=3.11"
+
+[project.optional-dependencies]
+dev = [
+    "binary-moip @ git+https://github.com/wiggs555/binary-moip",
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]

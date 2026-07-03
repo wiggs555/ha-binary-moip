@@ -1,0 +1,33 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Binary MoIP",
+        "description": "Connect to your Binary MoIP controller. REST is tried first; TCP port 23 is used as a fallback.",
+        "data": {
+          "host": "Host",
+          "username": "Username",
+          "password": "Password",
+          "https_port": "HTTPS port",
+          "control_port": "TCP control port",
+          "verify_ssl": "Verify SSL certificate"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Unable to connect to the controller via REST or TCP.",
+      "invalid_auth": "Invalid username or password."
+    },
+    "abort": {
+      "already_configured": "This controller is already configured."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Binary MoIP options",
+        "description": "Enable or disable individual receivers and transmitters."
+      }
+    }
+  }
+}
