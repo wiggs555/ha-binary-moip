@@ -5,7 +5,7 @@ Home Assistant custom integration for SnapAV Binary MoIP controllers, built on t
 ## Features
 
 - **Auto-detect API mode** — tries REST (firmware 4.x+) first, falls back to TCP control (port 23)
-- **Media player per receiver** — select video sources from Home Assistant
+- **Media player per receiver** — select video sources and control TV power via HDMI CEC
 - **Status sensors** — receiver and transmitter online/routing status
 - **Real-time updates** — WebSocket push (REST) or unsolicited TCP routing events, with 60s polling fallback
 
@@ -36,7 +36,7 @@ After setup, use **Configure** on the integration to enable/disable individual r
 
 | Entity | Description |
 |--------|-------------|
-| `media_player.*` | One per receiver — source selection via `select_source` |
+| `media_player.*` | One per receiver — source selection via `select_source`, TV power via `turn_on`/`turn_off` (HDMI CEC) |
 | `sensor.*_status` (receiver) | Online status, paired transmitter attributes |
 | `sensor.*_status` (transmitter) | Online status, input type, unit name |
 

@@ -38,5 +38,8 @@ ATTR_API_MODE = "api_mode"
 ATTR_INPUT_TYPE = "input_type"
 ATTR_UNIT_NAME = "unit_name"
 ATTR_INDEX = "index"
+ATTR_VIDEO_RX_ID = "video_rx_id"
+ATTR_CEC_INDEX = "cec_index"
+ATTR_CEC_SUPPORTED = "cec_supported"
 
 PLATFORMS = ["media_player", "sensor"]

@@ -13,7 +13,7 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 
 from binary_moip.exceptions import AuthError, CommandError, ConnectionError
 
-from .adapter import MoIPAdapter, MoIPState
+from .adapter import MoIPAdapter, MoIPReceiver, MoIPState
 from .const import (
     API_MODE_REST,
     CONF_API_MODE,
@@ -126,6 +126,20 @@ class BinaryMoIPDataUpdateCoordinator(DataUpdateCoordinator[MoIPState]):
         except (ConnectionError, CommandError) as err:
             raise UpdateFailed(str(err)) from err
         await self.async_request_refresh()
+
+    async def async_set_tv_power(self, receiver_id: int, on: bool) -> None:
+        """Send HDMI CEC power on/off to the TV connected to a receiver."""
+        if self.data is None:
+            raise UpdateFailed("MoIP controller state is unavailable")
+        receiver = self.data.receivers.get(receiver_id)
+        if receiver is None:
+            raise UpdateFailed(f"Unknown receiver: {receiver_id}")
+        try:
+            await self.adapter.async_set_tv_power(receiver, on)
+        except AuthError as err:
+            raise ConfigEntryAuthFailed(str(err)) from err
+        except (ConnectionError, CommandError) as err:
+            raise UpdateFailed(str(err)) from err
 
     async def _ws_listen(self) -> None:
         """Maintain REST websocket, refreshing on MoIP changes."""

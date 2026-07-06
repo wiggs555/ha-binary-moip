@@ -13,10 +13,14 @@ from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
-from homeassistant.helpers.update_coordinator import CoordinatorEntity
+from homeassistant.helpers.update_coordinator import CoordinatorEntity, UpdateFailed
 
 from .adapter import MoIPReceiver, MoIPTransmitter
 from .const import (
+    API_MODE_TCP,
+    ATTR_CEC_INDEX,
+    ATTR_CEC_SUPPORTED,
+    ATTR_VIDEO_RX_ID,
     DOMAIN,
     MANUFACTURER,
     OPT_ENABLED,
@@ -27,7 +31,11 @@ from .const import (
 )
 from .coordinator import BinaryMoIPConfigEntry, BinaryMoIPDataUpdateCoordinator
 
-SUPPORTED_FEATURES = MediaPlayerEntityFeature.SELECT_SOURCE
+SUPPORTED_FEATURES = (
+    MediaPlayerEntityFeature.SELECT_SOURCE
+    | MediaPlayerEntityFeature.TURN_ON
+    | MediaPlayerEntityFeature.TURN_OFF
+)
 
 
 def _receiver_enabled(entry: BinaryMoIPConfigEntry, receiver_id: int) -> bool:
@@ -162,6 +170,27 @@ class BinaryMoIPReceiverMediaPlayer(
 
         raise HomeAssistantError(f"Unknown source: {source}")
 
+    async def async_turn_on(self) -> None:
+        """Power on the TV connected to this receiver via HDMI CEC."""
+        await self._async_set_tv_power(True)
+
+    async def async_turn_off(self) -> None:
+        """Power off the TV connected to this receiver via HDMI CEC."""
+        await self._async_set_tv_power(False)
+
+    async def _async_set_tv_power(self, on: bool) -> None:
+        receiver = self._receiver
+        if receiver is None:
+            raise HomeAssistantError("Receiver is unavailable")
+        if not _cec_supported(receiver, self.coordinator.data.api_mode):
+            raise HomeAssistantError(
+                "HDMI CEC is not available for this receiver"
+            )
+        try:
+            await self.coordinator.async_set_tv_power(self._receiver_id, on)
+        except UpdateFailed as err:
+            raise HomeAssistantError(str(err)) from err
+
     @property
     def extra_state_attributes(self) -> dict[str, Any] | None:
         receiver = self._receiver
@@ -178,4 +207,19 @@ class BinaryMoIPReceiverMediaPlayer(
                 attrs["paired_transmitter_name"] = _transmitter_name(self._entry, tx)
         if receiver.unit_name:
             attrs["unit_name"] = receiver.unit_name
+        attrs[ATTR_CEC_SUPPORTED] = _cec_supported(
+            receiver, self.coordinator.data.api_mode
+        )
+        if receiver.video_rx_id is not None:
+            attrs[ATTR_VIDEO_RX_ID] = receiver.video_rx_id
+        cec_index = receiver.index or receiver.id
+        if cec_index is not None:
+            attrs[ATTR_CEC_INDEX] = cec_index
         return attrs
+
+
+def _cec_supported(receiver: MoIPReceiver, api_mode: str) -> bool:
+    """Return whether CEC power control is available for this receiver."""
+    if api_mode == API_MODE_TCP:
+        return True
+    return receiver.video_rx_id is not None
