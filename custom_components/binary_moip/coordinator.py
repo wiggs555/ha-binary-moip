@@ -87,11 +87,8 @@ class BinaryMoIPDataUpdateCoordinator(DataUpdateCoordinator[MoIPState]):
                 self.hass, self._ws_listen(), name=f"{DOMAIN}_ws"
             )
         else:
-            self.adapter.set_unsolicited_callback(
-                lambda: self.hass.loop.call_soon_threadsafe(
-                    self._schedule_refresh
-                )
-            )
+            # Callback may run from the TCP reader thread.
+            self.adapter.set_unsolicited_callback(self._schedule_refresh)
 
     def _schedule_refresh(self) -> None:
         self.hass.loop.call_soon_threadsafe(
@@ -99,13 +96,28 @@ class BinaryMoIPDataUpdateCoordinator(DataUpdateCoordinator[MoIPState]):
         )
 
     async def async_shutdown(self) -> None:
-        """Close adapter connections."""
-        if self._push_task is not None:
-            self._push_task.cancel()
-            with asyncio.suppress(asyncio.CancelledError):
-                await self._push_task
-            self._push_task = None
-        await self.adapter.async_close()
+        """Stop push listeners and close adapter connections.
+
+        The REST websocket is an independent connection; awaiting its task
+        after cancel can hang forever. Bound the wait so options reload can
+        complete.
+        """
+        push_task = self._push_task
+        self._push_task = None
+        if push_task is not None and not push_task.done():
+            push_task.cancel()
+            try:
+                async with asyncio.timeout(5):
+                    await push_task
+            except (TimeoutError, asyncio.CancelledError):
+                pass
+            except Exception:  # noqa: BLE001
+                _LOGGER.debug("MoIP push task ended with error", exc_info=True)
+
+        try:
+            await self.adapter.async_close()
+        except Exception:  # noqa: BLE001
+            _LOGGER.debug("Error closing MoIP adapter", exc_info=True)
 
     async def _async_update_data(self) -> MoIPState:
         try:
