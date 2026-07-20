@@ -37,9 +37,10 @@ After setup, use **Configure** on the integration to enable/disable individual r
 
 Receivers connected to displays that need IR (instead of HDMI CEC) can be configured in the same **Configure** flow:
 
-1. Save enable/label options, then choose a receiver under **IR display control**
-2. Set **Display power control** to **IR**
-3. Paste Pronto hex codes for power on, power off, volume up, volume down, and mute
+1. Choose **IR display control** from the options menu
+2. Select a receiver
+3. Set **Display power control** to **IR** and paste Pronto hex codes for power on, power off, volume up, volume down, and mute
+4. Return to the menu and choose **Save and finish**
 
 Notes:
 
