@@ -141,6 +141,20 @@ class BinaryMoIPDataUpdateCoordinator(DataUpdateCoordinator[MoIPState]):
         except (ConnectionError, CommandError) as err:
             raise UpdateFailed(str(err)) from err
 
+    async def async_send_ir(self, receiver_id: int, pronto_code: str) -> None:
+        """Blast a Pronto IR code from a receiver's IR output."""
+        if self.data is None:
+            raise UpdateFailed("MoIP controller state is unavailable")
+        receiver = self.data.receivers.get(receiver_id)
+        if receiver is None:
+            raise UpdateFailed(f"Unknown receiver: {receiver_id}")
+        try:
+            await self.adapter.async_send_ir(receiver, pronto_code)
+        except AuthError as err:
+            raise ConfigEntryAuthFailed(str(err)) from err
+        except (ConnectionError, CommandError) as err:
+            raise UpdateFailed(str(err)) from err
+
     async def _ws_listen(self) -> None:
         """Maintain REST websocket, refreshing on MoIP changes."""
         backoff = WS_BACKOFF_START

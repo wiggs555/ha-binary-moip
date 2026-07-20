@@ -5,7 +5,8 @@ Home Assistant custom integration for SnapAV Binary MoIP controllers, built on t
 ## Features
 
 - **Auto-detect API mode** — tries REST (firmware 4.x+) first, falls back to TCP control (port 23)
-- **Media player per receiver** — select video sources and control TV power via HDMI CEC
+- **Media player per receiver** — select video sources and control display power via HDMI CEC or IR
+- **IR volume and mute** — optional Pronto codes for volume up/down and mute toggle on older displays
 - **Status sensors** — receiver and transmitter online/routing status
 - **Real-time updates** — WebSocket push (REST) or unsolicited TCP routing events, with 60s polling fallback
 
@@ -32,11 +33,26 @@ Copy the `custom_components/binary_moip` folder into your Home Assistant `custom
 
 After setup, use **Configure** on the integration to enable/disable individual receivers and transmitters or override friendly names.
 
+### IR display control
+
+Receivers connected to displays that need IR (instead of HDMI CEC) can be configured in the same **Configure** flow:
+
+1. Save enable/label options, then choose a receiver under **IR display control**
+2. Set **Display power control** to **IR**
+3. Paste Pronto hex codes for power on, power off, volume up, volume down, and mute
+
+Notes:
+
+- Volume is step-only (`volume_up` / `volume_down`); absolute volume level is not available
+- Mute is a single toggle code (open-loop; Home Assistant does not track mute state from the display)
+- Leave a Pronto field blank to clear it
+- REST mode requires the receiver’s `ir_rx` association; TCP mode uses the receiver index
+
 ## Entities
 
 | Entity | Description |
 |--------|-------------|
-| `media_player.*` | One per receiver — source selection via `select_source`, TV power via `turn_on`/`turn_off` (HDMI CEC) |
+| `media_player.*` | One per receiver — source selection via `select_source`; display power via `turn_on`/`turn_off` (CEC or IR); optional IR `volume_up`/`volume_down`/`volume_mute` |
 | `sensor.*_status` (receiver) | Online status, paired transmitter attributes |
 | `sensor.*_status` (transmitter) | Online status, input type, unit name |
 

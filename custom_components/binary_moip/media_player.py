@@ -20,10 +20,23 @@ from .const import (
     API_MODE_TCP,
     ATTR_CEC_INDEX,
     ATTR_CEC_SUPPORTED,
+    ATTR_DISPLAY_CONTROL,
+    ATTR_IR_MUTE_CONFIGURED,
+    ATTR_IR_RX_ID,
+    ATTR_IR_SUPPORTED,
+    ATTR_IR_VOLUME_CONFIGURED,
     ATTR_VIDEO_RX_ID,
+    DISPLAY_CONTROL_CEC,
+    DISPLAY_CONTROL_IR,
     DOMAIN,
     MANUFACTURER,
+    OPT_DISPLAY_CONTROL,
     OPT_ENABLED,
+    OPT_IR_MUTE,
+    OPT_IR_POWER_OFF,
+    OPT_IR_POWER_ON,
+    OPT_IR_VOLUME_DOWN,
+    OPT_IR_VOLUME_UP,
     OPT_LABEL,
     OPT_RECEIVERS,
     OPT_TRANSMITTERS,
@@ -31,16 +44,19 @@ from .const import (
 )
 from .coordinator import BinaryMoIPConfigEntry, BinaryMoIPDataUpdateCoordinator
 
-SUPPORTED_FEATURES = (
+BASE_FEATURES = (
     MediaPlayerEntityFeature.SELECT_SOURCE
     | MediaPlayerEntityFeature.TURN_ON
     | MediaPlayerEntityFeature.TURN_OFF
 )
 
 
+def _receiver_opts(entry: BinaryMoIPConfigEntry, receiver_id: int) -> dict[str, Any]:
+    return entry.options.get(OPT_RECEIVERS, {}).get(str(receiver_id), {})
+
+
 def _receiver_enabled(entry: BinaryMoIPConfigEntry, receiver_id: int) -> bool:
-    opts = entry.options.get(OPT_RECEIVERS, {}).get(str(receiver_id), {})
-    return opts.get(OPT_ENABLED, True)
+    return _receiver_opts(entry, receiver_id).get(OPT_ENABLED, True)
 
 
 def _transmitter_enabled(entry: BinaryMoIPConfigEntry, transmitter_id: int) -> bool:
@@ -51,8 +67,7 @@ def _transmitter_enabled(entry: BinaryMoIPConfigEntry, transmitter_id: int) -> b
 def _receiver_name(
     entry: BinaryMoIPConfigEntry, receiver: MoIPReceiver
 ) -> str:
-    opts = entry.options.get(OPT_RECEIVERS, {}).get(str(receiver.id), {})
-    return opts.get(OPT_LABEL, receiver.name)
+    return _receiver_opts(entry, receiver.id).get(OPT_LABEL, receiver.name)
 
 
 def _transmitter_name(
@@ -73,6 +88,34 @@ def _enabled_transmitters(
         for tx_id, tx in coordinator.data.transmitters.items()
         if _transmitter_enabled(entry, tx_id)
     }
+
+
+def _display_control(entry: BinaryMoIPConfigEntry, receiver_id: int) -> str:
+    mode = _receiver_opts(entry, receiver_id).get(
+        OPT_DISPLAY_CONTROL, DISPLAY_CONTROL_CEC
+    )
+    if mode == DISPLAY_CONTROL_IR:
+        return DISPLAY_CONTROL_IR
+    return DISPLAY_CONTROL_CEC
+
+
+def _ir_code(entry: BinaryMoIPConfigEntry, receiver_id: int, key: str) -> str | None:
+    value = _receiver_opts(entry, receiver_id).get(key)
+    if not isinstance(value, str):
+        return None
+    code = value.strip()
+    return code or None
+
+
+def _volume_ir_configured(entry: BinaryMoIPConfigEntry, receiver_id: int) -> bool:
+    return bool(
+        _ir_code(entry, receiver_id, OPT_IR_VOLUME_UP)
+        and _ir_code(entry, receiver_id, OPT_IR_VOLUME_DOWN)
+    )
+
+
+def _mute_ir_configured(entry: BinaryMoIPConfigEntry, receiver_id: int) -> bool:
+    return bool(_ir_code(entry, receiver_id, OPT_IR_MUTE))
 
 
 async def async_setup_entry(
@@ -98,7 +141,6 @@ class BinaryMoIPReceiverMediaPlayer(
 ):
     """Media player representing a Binary MoIP receiver."""
 
-    _attr_supported_features = SUPPORTED_FEATURES
     _attr_has_entity_name = True
 
     def __init__(
@@ -128,6 +170,15 @@ class BinaryMoIPReceiverMediaPlayer(
     @property
     def available(self) -> bool:
         return super().available and self._receiver is not None
+
+    @property
+    def supported_features(self) -> MediaPlayerEntityFeature:
+        features = BASE_FEATURES
+        if _volume_ir_configured(self._entry, self._receiver_id):
+            features |= MediaPlayerEntityFeature.VOLUME_STEP
+        if _mute_ir_configured(self._entry, self._receiver_id):
+            features |= MediaPlayerEntityFeature.VOLUME_MUTE
+        return features
 
     @property
     def state(self) -> MediaPlayerState | None:
@@ -171,23 +222,65 @@ class BinaryMoIPReceiverMediaPlayer(
         raise HomeAssistantError(f"Unknown source: {source}")
 
     async def async_turn_on(self) -> None:
-        """Power on the TV connected to this receiver via HDMI CEC."""
+        """Power on the display connected to this receiver."""
         await self._async_set_tv_power(True)
 
     async def async_turn_off(self) -> None:
-        """Power off the TV connected to this receiver via HDMI CEC."""
+        """Power off the display connected to this receiver."""
         await self._async_set_tv_power(False)
+
+    async def async_volume_up(self) -> None:
+        """Raise display volume via IR."""
+        await self._async_send_configured_ir(
+            OPT_IR_VOLUME_UP, "IR volume up is not configured for this receiver"
+        )
+
+    async def async_volume_down(self) -> None:
+        """Lower display volume via IR."""
+        await self._async_send_configured_ir(
+            OPT_IR_VOLUME_DOWN, "IR volume down is not configured for this receiver"
+        )
+
+    async def async_mute_volume(self, mute: bool) -> None:
+        """Toggle display mute via IR (open-loop; mute flag is ignored)."""
+        del mute  # IR mute is a toggle; absolute mute state is not tracked.
+        await self._async_send_configured_ir(
+            OPT_IR_MUTE, "IR mute is not configured for this receiver"
+        )
 
     async def _async_set_tv_power(self, on: bool) -> None:
         receiver = self._receiver
-        if receiver is None:
+        if receiver is None or self.coordinator.data is None:
             raise HomeAssistantError("Receiver is unavailable")
+
+        if _display_control(self._entry, self._receiver_id) == DISPLAY_CONTROL_IR:
+            key = OPT_IR_POWER_ON if on else OPT_IR_POWER_OFF
+            label = "power on" if on else "power off"
+            await self._async_send_configured_ir(
+                key, f"IR {label} is not configured for this receiver"
+            )
+            return
+
         if not _cec_supported(receiver, self.coordinator.data.api_mode):
             raise HomeAssistantError(
                 "HDMI CEC is not available for this receiver"
             )
         try:
             await self.coordinator.async_set_tv_power(self._receiver_id, on)
+        except UpdateFailed as err:
+            raise HomeAssistantError(str(err)) from err
+
+    async def _async_send_configured_ir(self, key: str, missing_message: str) -> None:
+        receiver = self._receiver
+        if receiver is None or self.coordinator.data is None:
+            raise HomeAssistantError("Receiver is unavailable")
+        if not _ir_supported(receiver, self.coordinator.data.api_mode):
+            raise HomeAssistantError("IR is not available for this receiver")
+        code = _ir_code(self._entry, self._receiver_id, key)
+        if code is None:
+            raise HomeAssistantError(missing_message)
+        try:
+            await self.coordinator.async_send_ir(self._receiver_id, code)
         except UpdateFailed as err:
             raise HomeAssistantError(str(err)) from err
 
@@ -210,8 +303,22 @@ class BinaryMoIPReceiverMediaPlayer(
         attrs[ATTR_CEC_SUPPORTED] = _cec_supported(
             receiver, self.coordinator.data.api_mode
         )
+        attrs[ATTR_IR_SUPPORTED] = _ir_supported(
+            receiver, self.coordinator.data.api_mode
+        )
+        attrs[ATTR_DISPLAY_CONTROL] = _display_control(
+            self._entry, self._receiver_id
+        )
+        attrs[ATTR_IR_VOLUME_CONFIGURED] = _volume_ir_configured(
+            self._entry, self._receiver_id
+        )
+        attrs[ATTR_IR_MUTE_CONFIGURED] = _mute_ir_configured(
+            self._entry, self._receiver_id
+        )
         if receiver.video_rx_id is not None:
             attrs[ATTR_VIDEO_RX_ID] = receiver.video_rx_id
+        if receiver.ir_rx_id is not None:
+            attrs[ATTR_IR_RX_ID] = receiver.ir_rx_id
         cec_index = receiver.index or receiver.id
         if cec_index is not None:
             attrs[ATTR_CEC_INDEX] = cec_index
@@ -223,3 +330,10 @@ def _cec_supported(receiver: MoIPReceiver, api_mode: str) -> bool:
     if api_mode == API_MODE_TCP:
         return True
     return receiver.video_rx_id is not None
+
+
+def _ir_supported(receiver: MoIPReceiver, api_mode: str) -> bool:
+    """Return whether IR blasting is available for this receiver."""
+    if api_mode == API_MODE_TCP:
+        return True
+    return receiver.ir_rx_id is not None

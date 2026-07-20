@@ -9,7 +9,7 @@ from dataclasses import dataclass, field
 from typing import Any, Literal
 
 from binary_moip import AsyncConfigClient, AsyncControlClient
-from binary_moip.control.protocol import CecMode, UnsolicitedReceivers
+from binary_moip.control.protocol import CecMode, IrType, UnsolicitedReceivers
 from binary_moip.exceptions import ApiError, AuthError, CommandError, ConnectionError
 
 from .const import API_MODE_REST, API_MODE_TCP
@@ -30,6 +30,7 @@ class MoIPReceiver:
     unit_id: int | None = None
     unit_name: str | None = None
     video_rx_id: int | None = None
+    ir_rx_id: int | None = None
     index: int | None = None
 
 
@@ -302,6 +303,7 @@ class MoIPAdapter:
                 unit_id=unit_id,
                 unit_name=units[unit_id]["name"] if unit_id in units else None,
                 video_rx_id=_opt_int(assoc.get("video_rx")),
+                ir_rx_id=_opt_int(assoc.get("ir_rx")),
                 index=_opt_int(settings.get("index")),
             )
 
@@ -375,6 +377,28 @@ class MoIPAdapter:
         assert self._tcp is not None
         rx_index = receiver.index or receiver.id
         await self._tcp.set_cec(rx_index, CecMode.ON if on else CecMode.OFF)
+
+    async def async_send_ir(self, receiver: MoIPReceiver, pronto_code: str) -> None:
+        """Blast a Pronto IR code from the receiver's IR output."""
+        code = pronto_code.strip()
+        if not code:
+            raise CommandError(f"Receiver {receiver.id} has an empty IR Pronto code")
+
+        if self.api_mode == API_MODE_REST:
+            if receiver.ir_rx_id is None:
+                raise CommandError(
+                    f"Receiver {receiver.id} has no associated ir_rx endpoint"
+                )
+            assert self._rest is not None
+            await self._rest.moip.post_moip_ir_rx_id(
+                receiver.ir_rx_id,
+                json={"format": "pronto", "message": code},
+            )
+            return
+
+        assert self._tcp is not None
+        rx_index = receiver.index or receiver.id
+        await self._tcp.send_ir(IrType.RX, rx_index, code)
 
     async def async_subscribe_events(self) -> AsyncIterator[object]:
         """Yield change events for REST mode (websocket)."""
