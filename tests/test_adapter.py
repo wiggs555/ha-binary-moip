@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from binary_moip.control.protocol import CecMode
+from binary_moip.control.protocol import CecMode, IrType
 
 from tests.conftest import load_adapter_module
 
@@ -224,3 +224,109 @@ async def test_async_set_tv_power_rest_missing_video_rx() -> None:
     receiver = MoIPReceiver(id=1050, name="Living Room")
     with pytest.raises(adapter_mod.CommandError, match="no associated video_rx"):
         await adapter.async_set_tv_power(receiver, True)
+
+
+@pytest.mark.asyncio
+async def test_async_send_ir_tcp() -> None:
+    adapter = MoIPAdapter(
+        "192.168.1.10", "admin", "secret", API_MODE_TCP, control_port=23
+    )
+    adapter._tcp = MagicMock()
+    adapter._tcp.send_ir = AsyncMock()
+
+    receiver = MoIPReceiver(id=2, name="Living Room", index=2)
+    await adapter.async_send_ir(receiver, " 0000 006C 0000 0000 ")
+
+    adapter._tcp.send_ir.assert_awaited_once_with(
+        IrType.RX, 2, "0000 006C 0000 0000"
+    )
+
+
+@pytest.mark.asyncio
+async def test_async_send_ir_tcp_falls_back_to_id() -> None:
+    adapter = MoIPAdapter(
+        "192.168.1.10", "admin", "secret", API_MODE_TCP, control_port=23
+    )
+    adapter._tcp = MagicMock()
+    adapter._tcp.send_ir = AsyncMock()
+
+    receiver = MoIPReceiver(id=3, name="Bedroom")
+    await adapter.async_send_ir(receiver, "0000 006C")
+
+    adapter._tcp.send_ir.assert_awaited_once_with(IrType.RX, 3, "0000 006C")
+
+
+@pytest.mark.asyncio
+async def test_async_send_ir_rest() -> None:
+    adapter = MoIPAdapter(
+        "192.168.1.10", "admin", "secret", API_MODE_REST, verify_ssl=False
+    )
+    adapter._rest = MagicMock()
+    adapter._rest.moip.post_moip_ir_rx_id = AsyncMock()
+
+    receiver = MoIPReceiver(id=1050, name="Living Room", ir_rx_id=1055)
+    await adapter.async_send_ir(receiver, "0000 006C 0000 0000")
+
+    adapter._rest.moip.post_moip_ir_rx_id.assert_awaited_once_with(
+        1055,
+        json={"format": "pronto", "message": "0000 006C 0000 0000"},
+    )
+
+
+@pytest.mark.asyncio
+async def test_async_send_ir_rest_missing_ir_rx() -> None:
+    adapter = MoIPAdapter(
+        "192.168.1.10", "admin", "secret", API_MODE_REST, verify_ssl=False
+    )
+    adapter._rest = MagicMock()
+
+    receiver = MoIPReceiver(id=1050, name="Living Room")
+    with pytest.raises(adapter_mod.CommandError, match="no associated ir_rx"):
+        await adapter.async_send_ir(receiver, "0000 006C")
+
+
+@pytest.mark.asyncio
+async def test_async_send_ir_empty_code() -> None:
+    adapter = MoIPAdapter(
+        "192.168.1.10", "admin", "secret", API_MODE_TCP, control_port=23
+    )
+    adapter._tcp = MagicMock()
+
+    receiver = MoIPReceiver(id=1, name="Living Room", index=1)
+    with pytest.raises(adapter_mod.CommandError, match="empty IR Pronto code"):
+        await adapter.async_send_ir(receiver, "   ")
+
+
+@pytest.mark.asyncio
+async def test_discover_rest_reads_ir_rx_id() -> None:
+    adapter = MoIPAdapter(
+        "192.168.1.10", "admin", "secret", API_MODE_REST, verify_ssl=False
+    )
+    adapter._rest = MagicMock()
+    adapter._rest.moip.list_unit = AsyncMock(return_value={"items": [100]})
+    adapter._rest.moip.get_moip_unit_id = AsyncMock(
+        return_value={
+            "id": 100,
+            "settings": {"name": "Unit 1"},
+            "status": {"unit_state": "online"},
+            "associations": {"group": {"rx": [1050], "tx": []}},
+        }
+    )
+    adapter._rest.moip.get_moip_group_rx_id = AsyncMock(
+        return_value={
+            "id": 1050,
+            "settings": {"name": "Living Room", "index": 1},
+            "status": {"state": "online"},
+            "associations": {
+                "unit": 100,
+                "paired_tx": None,
+                "video_rx": 1052,
+                "ir_rx": 1055,
+            },
+        }
+    )
+
+    state = await adapter.async_discover()
+
+    assert state.receivers[1050].ir_rx_id == 1055
+    assert state.receivers[1050].video_rx_id == 1052
