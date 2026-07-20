@@ -8,6 +8,7 @@ from typing import Any
 import voluptuous as vol
 from homeassistant.config_entries import ConfigEntry, ConfigFlow, ConfigFlowResult, OptionsFlow
 from homeassistant.core import callback
+from homeassistant.data_entry_flow import section
 from homeassistant.helpers import selector
 
 from binary_moip.exceptions import AuthError
@@ -150,6 +151,8 @@ class BinaryMoIPOptionsFlowHandler(OptionsFlow):
             receivers: dict[str, dict[str, Any]] = {}
             transmitters: dict[str, dict[str, Any]] = {}
             for key, value in user_input.items():
+                if not isinstance(value, dict):
+                    continue
                 if key.startswith("rx_"):
                     rx_id = key.removeprefix("rx_")
                     merged = dict(existing.get(rx_id, {}))
@@ -166,42 +169,43 @@ class BinaryMoIPOptionsFlowHandler(OptionsFlow):
             return self.async_create_entry(title="", data={})
 
         state = coordinator.data
-        schema: dict[vol.Marker, Any] = {}
+        schema: dict[Any, Any] = {}
 
         for rx_id, receiver in sorted(state.receivers.items()):
             opts = self.config_entry.options.get(OPT_RECEIVERS, {}).get(str(rx_id), {})
-            schema[
-                vol.Optional(
-                    f"rx_{rx_id}",
-                    description={"suggested_value": receiver.name},
-                    default={
-                        OPT_ENABLED: opts.get(OPT_ENABLED, True),
-                        OPT_LABEL: opts.get(OPT_LABEL, receiver.name),
-                    },
-                )
-            ] = vol.Schema(
-                {
-                    vol.Optional(OPT_ENABLED, default=True): bool,
-                    vol.Optional(OPT_LABEL, default=receiver.name): str,
-                }
+            # Nested vol.Schema is not frontend-serializable; use section().
+            schema[vol.Required(f"rx_{rx_id}")] = section(
+                vol.Schema(
+                    {
+                        vol.Required(
+                            OPT_ENABLED,
+                            default=opts.get(OPT_ENABLED, True),
+                        ): bool,
+                        vol.Required(
+                            OPT_LABEL,
+                            default=opts.get(OPT_LABEL, receiver.name),
+                        ): str,
+                    }
+                ),
+                {"collapsed": True},
             )
 
         for tx_id, transmitter in sorted(state.transmitters.items()):
             opts = self.config_entry.options.get(OPT_TRANSMITTERS, {}).get(str(tx_id), {})
-            schema[
-                vol.Optional(
-                    f"tx_{tx_id}",
-                    description={"suggested_value": transmitter.name},
-                    default={
-                        OPT_ENABLED: opts.get(OPT_ENABLED, True),
-                        OPT_LABEL: opts.get(OPT_LABEL, transmitter.name),
-                    },
-                )
-            ] = vol.Schema(
-                {
-                    vol.Optional(OPT_ENABLED, default=True): bool,
-                    vol.Optional(OPT_LABEL, default=transmitter.name): str,
-                }
+            schema[vol.Required(f"tx_{tx_id}")] = section(
+                vol.Schema(
+                    {
+                        vol.Required(
+                            OPT_ENABLED,
+                            default=opts.get(OPT_ENABLED, True),
+                        ): bool,
+                        vol.Required(
+                            OPT_LABEL,
+                            default=opts.get(OPT_LABEL, transmitter.name),
+                        ): str,
+                    }
+                ),
+                {"collapsed": True},
             )
 
         if not schema:

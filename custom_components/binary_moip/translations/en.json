@@ -26,7 +26,7 @@
     "step": {
       "init": {
         "title": "Binary MoIP options",
-        "description": "Enable or disable individual receivers and transmitters."
+        "description": "Enable or disable individual receivers and transmitters. Expand each section to edit."
       },
       "ir_menu": {
         "title": "IR display control",
