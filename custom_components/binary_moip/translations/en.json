@@ -26,18 +26,25 @@
     "step": {
       "init": {
         "title": "Binary MoIP options",
-        "description": "Enable or disable individual receivers and transmitters. Expand each section to edit."
+        "description": "Choose what to configure. Select IR display control to paste Pronto codes for older displays.",
+        "data": {
+          "menu": "Configuration"
+        }
+      },
+      "devices": {
+        "title": "Receivers & transmitters",
+        "description": "Expand a device to enable/disable it or change its name, then submit to return to the menu."
       },
       "ir_menu": {
         "title": "IR display control",
-        "description": "Select a receiver to configure IR Pronto codes for power, volume, and mute, or choose Done to save.",
+        "description": "Select a receiver to configure IR Pronto codes for power, volume, and mute.",
         "data": {
           "receiver": "Receiver"
         }
       },
       "ir_codes": {
         "title": "IR codes for {receiver}",
-        "description": "Use Pronto hex codes. Mute is a toggle (no separate mute on/off). Leave a field blank to clear it.",
+        "description": "Set display power to IR, then paste Pronto hex codes. Mute is a toggle. Leave a field blank to clear it.",
         "data": {
           "display_control": "Display power control",
           "ir_power_on": "IR power on (Pronto)",

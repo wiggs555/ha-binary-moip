@@ -62,7 +62,10 @@ _IR_OPTION_KEYS = (
     OPT_IR_MUTE,
 )
 
-_IR_MENU_DONE = "done"
+_MENU_DEVICES = "devices"
+_MENU_IR = "ir"
+_MENU_FINISH = "finish"
+_IR_MENU_BACK = "back"
 
 
 class BinaryMoIPConfigFlow(ConfigFlow, domain=DOMAIN):
@@ -132,8 +135,24 @@ class BinaryMoIPOptionsFlowHandler(OptionsFlow):
         self._receivers: dict[str, dict[str, Any]] = {}
         self._transmitters: dict[str, dict[str, Any]] = {}
         self._ir_receiver_id: str | None = None
+        self._options_loaded = False
+
+    def _ensure_options_loaded(self) -> None:
+        """Copy current config-entry options into the working draft."""
+        if self._options_loaded:
+            return
+        existing_rx = self.config_entry.options.get(OPT_RECEIVERS, {})
+        existing_tx = self.config_entry.options.get(OPT_TRANSMITTERS, {})
+        self._receivers = {
+            str(rx_id): dict(opts) for rx_id, opts in existing_rx.items()
+        }
+        self._transmitters = {
+            str(tx_id): dict(opts) for tx_id, opts in existing_tx.items()
+        }
+        self._options_loaded = True
 
     def _finish(self) -> ConfigFlowResult:
+        self._ensure_options_loaded()
         return self.async_create_entry(
             title="",
             data={
@@ -145,35 +164,73 @@ class BinaryMoIPOptionsFlowHandler(OptionsFlow):
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Manage entity enable/disable options."""
+        """Show the options menu."""
+        self._ensure_options_loaded()
+
         if user_input is not None:
-            existing = self.config_entry.options.get(OPT_RECEIVERS, {})
-            receivers: dict[str, dict[str, Any]] = {}
-            transmitters: dict[str, dict[str, Any]] = {}
+            choice = user_input["menu"]
+            if choice == _MENU_DEVICES:
+                return await self.async_step_devices()
+            if choice == _MENU_IR:
+                return await self.async_step_ir_menu()
+            return self._finish()
+
+        return self.async_show_form(
+            step_id="init",
+            data_schema=vol.Schema(
+                {
+                    vol.Required("menu", default=_MENU_IR): selector.SelectSelector(
+                        selector.SelectSelectorConfig(
+                            options=[
+                                {
+                                    "value": _MENU_IR,
+                                    "label": "IR display control (power, volume, mute)",
+                                },
+                                {
+                                    "value": _MENU_DEVICES,
+                                    "label": "Enable / rename receivers & transmitters",
+                                },
+                                {
+                                    "value": _MENU_FINISH,
+                                    "label": "Save and finish",
+                                },
+                            ]
+                        )
+                    ),
+                }
+            ),
+        )
+
+    async def async_step_devices(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Enable/disable and rename receivers and transmitters."""
+        self._ensure_options_loaded()
+        coordinator = self.config_entry.runtime_data
+        if coordinator is None or coordinator.data is None:
+            return await self.async_step_init()
+
+        if user_input is not None:
             for key, value in user_input.items():
                 if not isinstance(value, dict):
                     continue
                 if key.startswith("rx_"):
                     rx_id = key.removeprefix("rx_")
-                    merged = dict(existing.get(rx_id, {}))
+                    merged = dict(self._receivers.get(rx_id, {}))
                     merged.update(value)
-                    receivers[rx_id] = merged
+                    self._receivers[rx_id] = merged
                 elif key.startswith("tx_"):
-                    transmitters[key.removeprefix("tx_")] = value
-            self._receivers = receivers
-            self._transmitters = transmitters
-            return await self.async_step_ir_menu()
-
-        coordinator = self.config_entry.runtime_data
-        if coordinator is None or coordinator.data is None:
-            return self.async_create_entry(title="", data={})
+                    tx_id = key.removeprefix("tx_")
+                    merged = dict(self._transmitters.get(tx_id, {}))
+                    merged.update(value)
+                    self._transmitters[tx_id] = merged
+            return await self.async_step_init()
 
         state = coordinator.data
         schema: dict[Any, Any] = {}
 
         for rx_id, receiver in sorted(state.receivers.items()):
-            opts = self.config_entry.options.get(OPT_RECEIVERS, {}).get(str(rx_id), {})
-            # Nested vol.Schema is not frontend-serializable; use section().
+            opts = self._receivers.get(str(rx_id), {})
             schema[vol.Required(f"rx_{rx_id}")] = section(
                 vol.Schema(
                     {
@@ -184,14 +241,14 @@ class BinaryMoIPOptionsFlowHandler(OptionsFlow):
                         vol.Required(
                             OPT_LABEL,
                             default=opts.get(OPT_LABEL, receiver.name),
-                        ): str,
+                        ): selector.TextSelector(),
                     }
                 ),
                 {"collapsed": True},
             )
 
         for tx_id, transmitter in sorted(state.transmitters.items()):
-            opts = self.config_entry.options.get(OPT_TRANSMITTERS, {}).get(str(tx_id), {})
+            opts = self._transmitters.get(str(tx_id), {})
             schema[vol.Required(f"tx_{tx_id}")] = section(
                 vol.Schema(
                     {
@@ -202,27 +259,28 @@ class BinaryMoIPOptionsFlowHandler(OptionsFlow):
                         vol.Required(
                             OPT_LABEL,
                             default=opts.get(OPT_LABEL, transmitter.name),
-                        ): str,
+                        ): selector.TextSelector(),
                     }
                 ),
                 {"collapsed": True},
             )
 
         if not schema:
-            return self.async_create_entry(title="", data={})
+            return await self.async_step_init()
 
-        return self.async_show_form(step_id="init", data_schema=vol.Schema(schema))
+        return self.async_show_form(step_id="devices", data_schema=vol.Schema(schema))
 
     async def async_step_ir_menu(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Choose a receiver to configure IR display control, or finish."""
+        """Choose a receiver to configure IR display control."""
+        self._ensure_options_loaded()
         coordinator = self.config_entry.runtime_data
         if coordinator is None or coordinator.data is None:
-            return self._finish()
+            return await self.async_step_init()
 
         options: list[selector.SelectOptionDict] = [
-            {"value": _IR_MENU_DONE, "label": "Done"},
+            {"value": _IR_MENU_BACK, "label": "Back to menu"},
         ]
         for rx_id, receiver in sorted(coordinator.data.receivers.items()):
             opts = self._receivers.get(str(rx_id), {})
@@ -231,8 +289,8 @@ class BinaryMoIPOptionsFlowHandler(OptionsFlow):
 
         if user_input is not None:
             choice = user_input["receiver"]
-            if choice == _IR_MENU_DONE:
-                return self._finish()
+            if choice == _IR_MENU_BACK:
+                return await self.async_step_init()
             self._ir_receiver_id = choice
             return await self.async_step_ir_codes()
 
@@ -240,7 +298,9 @@ class BinaryMoIPOptionsFlowHandler(OptionsFlow):
             step_id="ir_menu",
             data_schema=vol.Schema(
                 {
-                    vol.Required("receiver", default=_IR_MENU_DONE): selector.SelectSelector(
+                    vol.Required(
+                        "receiver", default=_IR_MENU_BACK
+                    ): selector.SelectSelector(
                         selector.SelectSelectorConfig(options=options)
                     ),
                 }
@@ -251,6 +311,7 @@ class BinaryMoIPOptionsFlowHandler(OptionsFlow):
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
         """Edit IR Pronto codes and display control for one receiver."""
+        self._ensure_options_loaded()
         rx_id = self._ir_receiver_id
         if rx_id is None:
             return await self.async_step_ir_menu()
@@ -296,31 +357,49 @@ class BinaryMoIPOptionsFlowHandler(OptionsFlow):
                     ),
                     vol.Optional(
                         OPT_IR_POWER_ON,
-                        description={"suggested_value": opts.get(OPT_IR_POWER_ON, "")},
                         default=opts.get(OPT_IR_POWER_ON, ""),
-                    ): str,
+                    ): selector.TextSelector(
+                        selector.TextSelectorConfig(
+                            multiline=True,
+                            type=selector.TextSelectorType.TEXT,
+                        )
+                    ),
                     vol.Optional(
                         OPT_IR_POWER_OFF,
-                        description={"suggested_value": opts.get(OPT_IR_POWER_OFF, "")},
                         default=opts.get(OPT_IR_POWER_OFF, ""),
-                    ): str,
+                    ): selector.TextSelector(
+                        selector.TextSelectorConfig(
+                            multiline=True,
+                            type=selector.TextSelectorType.TEXT,
+                        )
+                    ),
                     vol.Optional(
                         OPT_IR_VOLUME_UP,
-                        description={"suggested_value": opts.get(OPT_IR_VOLUME_UP, "")},
                         default=opts.get(OPT_IR_VOLUME_UP, ""),
-                    ): str,
+                    ): selector.TextSelector(
+                        selector.TextSelectorConfig(
+                            multiline=True,
+                            type=selector.TextSelectorType.TEXT,
+                        )
+                    ),
                     vol.Optional(
                         OPT_IR_VOLUME_DOWN,
-                        description={
-                            "suggested_value": opts.get(OPT_IR_VOLUME_DOWN, "")
-                        },
                         default=opts.get(OPT_IR_VOLUME_DOWN, ""),
-                    ): str,
+                    ): selector.TextSelector(
+                        selector.TextSelectorConfig(
+                            multiline=True,
+                            type=selector.TextSelectorType.TEXT,
+                        )
+                    ),
                     vol.Optional(
                         OPT_IR_MUTE,
-                        description={"suggested_value": opts.get(OPT_IR_MUTE, "")},
                         default=opts.get(OPT_IR_MUTE, ""),
-                    ): str,
+                    ): selector.TextSelector(
+                        selector.TextSelectorConfig(
+                            multiline=True,
+                            type=selector.TextSelectorType.TEXT,
+                        )
+                    ),
                 }
             ),
         )
