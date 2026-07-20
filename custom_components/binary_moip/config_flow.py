@@ -115,16 +115,19 @@ class BinaryMoIPConfigFlow(ConfigFlow, domain=DOMAIN):
 
     @staticmethod
     @callback
-    def async_get_options_flow(config_entry: ConfigEntry) -> BinaryMoIPOptionsFlowHandler:
+    def async_get_options_flow(
+        config_entry: ConfigEntry,
+    ) -> BinaryMoIPOptionsFlowHandler:
         """Get the options flow."""
-        return BinaryMoIPOptionsFlowHandler(config_entry)
+        # config_entry is injected by Home Assistant; do not assign it.
+        return BinaryMoIPOptionsFlowHandler()
 
 
 class BinaryMoIPOptionsFlowHandler(OptionsFlow):
     """Handle options for Binary MoIP."""
 
-    def __init__(self, config_entry: ConfigEntry) -> None:
-        self.config_entry = config_entry
+    def __init__(self) -> None:
+        # self.config_entry is a read-only property set by Home Assistant.
         self._receivers: dict[str, dict[str, Any]] = {}
         self._transmitters: dict[str, dict[str, Any]] = {}
         self._ir_receiver_id: str | None = None
