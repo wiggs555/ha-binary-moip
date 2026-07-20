@@ -62,6 +62,8 @@ class BinaryMoIPDataUpdateCoordinator(DataUpdateCoordinator[MoIPState]):
         self.adapter = adapter
         self.ws_connected = False
         self._push_task: asyncio.Task[None] | None = None
+        self.enabled_receiver_ids: set[str] = set()
+        self.enabled_transmitter_ids: set[str] = set()
 
     @classmethod
     def from_entry(
