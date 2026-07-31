@@ -1,0 +1,29 @@
+send_ir:
+  name: Send IR
+  description: Blast a Pronto IR code from a MoIP receiver IR output. Provide either raw Pronto hex or a built-in Samsung/LG command.
+  target:
+    entity:
+      domain: media_player
+      integration: binary_moip
+  fields:
+    pronto:
+      name: Pronto hex
+      description: Raw Pronto IR code. Mutually exclusive with brand/command.
+      example: "0000 006D 0000 0022 00AC 00AC 0015 0040"
+      selector:
+        text:
+    brand:
+      name: Brand
+      description: Built-in code set. Requires command. Mutually exclusive with pronto.
+      example: samsung
+      selector:
+        select:
+          options:
+            - samsung
+            - lg
+    command:
+      name: Command
+      description: Named command from the brand map (e.g. power_on, volume_up, hdmi_1). Requires brand.
+      example: power_on
+      selector:
+        text:

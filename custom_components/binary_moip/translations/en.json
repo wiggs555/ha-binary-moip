@@ -55,5 +55,25 @@
         }
       }
     }
+  },
+  "services": {
+    "send_ir": {
+      "name": "Send IR",
+      "description": "Blast a Pronto IR code from a MoIP receiver IR output. Provide either raw Pronto hex or a built-in Samsung/LG command.",
+      "fields": {
+        "pronto": {
+          "name": "Pronto hex",
+          "description": "Raw Pronto IR code. Mutually exclusive with brand/command."
+        },
+        "brand": {
+          "name": "Brand",
+          "description": "Built-in code set (samsung or lg). Requires command. Mutually exclusive with pronto."
+        },
+        "command": {
+          "name": "Command",
+          "description": "Named command from the brand map (e.g. power_on, volume_up, hdmi_1). Requires brand."
+        }
+      }
+    }
   }
 }

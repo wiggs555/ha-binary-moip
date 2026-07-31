@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
+import voluptuous as vol
+
 from homeassistant.components.media_player import (
     MediaPlayerEntity,
     MediaPlayerEntityFeature,
@@ -11,20 +13,27 @@ from homeassistant.components.media_player import (
 )
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
+from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.device_registry import DeviceInfo
-from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
+from homeassistant.helpers.entity_platform import (
+    AddConfigEntryEntitiesCallback,
+    async_get_current_platform,
+)
 from homeassistant.helpers.update_coordinator import CoordinatorEntity, UpdateFailed
 
 from .adapter import MoIPReceiver, MoIPTransmitter
 from .const import (
     API_MODE_TCP,
+    ATTR_BRAND,
     ATTR_CEC_INDEX,
     ATTR_CEC_SUPPORTED,
+    ATTR_COMMAND,
     ATTR_DISPLAY_CONTROL,
     ATTR_IR_MUTE_CONFIGURED,
     ATTR_IR_RX_ID,
     ATTR_IR_SUPPORTED,
     ATTR_IR_VOLUME_CONFIGURED,
+    ATTR_PRONTO,
     ATTR_VIDEO_RX_ID,
     DISPLAY_CONTROL_CEC,
     DISPLAY_CONTROL_IR,
@@ -40,9 +49,11 @@ from .const import (
     OPT_LABEL,
     OPT_RECEIVERS,
     OPT_TRANSMITTERS,
+    SERVICE_SEND_IR,
     SOURCE_OFF,
 )
 from .coordinator import BinaryMoIPConfigEntry, BinaryMoIPDataUpdateCoordinator
+from .ir_codes import SUPPORTED_BRANDS, resolve_pronto
 
 BASE_FEATURES = (
     MediaPlayerEntityFeature.SELECT_SOURCE
@@ -134,6 +145,17 @@ async def async_setup_entry(
         if _receiver_enabled(entry, receiver.id)
     ]
     async_add_entities(entities)
+
+    platform = async_get_current_platform()
+    platform.async_register_entity_service(
+        SERVICE_SEND_IR,
+        {
+            vol.Optional(ATTR_PRONTO): cv.string,
+            vol.Optional(ATTR_BRAND): vol.In(SUPPORTED_BRANDS),
+            vol.Optional(ATTR_COMMAND): cv.string,
+        },
+        "async_send_ir_command",
+    )
 
 
 class BinaryMoIPReceiverMediaPlayer(
@@ -270,15 +292,28 @@ class BinaryMoIPReceiverMediaPlayer(
         except UpdateFailed as err:
             raise HomeAssistantError(str(err)) from err
 
+    async def async_send_ir_command(
+        self,
+        pronto: str | None = None,
+        brand: str | None = None,
+        command: str | None = None,
+    ) -> None:
+        """Blast Pronto IR from this receiver (raw or built-in brand command)."""
+        code = _resolve_service_pronto(pronto, brand, command)
+        await self._async_blast_ir(code)
+
     async def _async_send_configured_ir(self, key: str, missing_message: str) -> None:
+        code = _ir_code(self._entry, self._receiver_id, key)
+        if code is None:
+            raise HomeAssistantError(missing_message)
+        await self._async_blast_ir(code)
+
+    async def _async_blast_ir(self, code: str) -> None:
         receiver = self._receiver
         if receiver is None or self.coordinator.data is None:
             raise HomeAssistantError("Receiver is unavailable")
         if not _ir_supported(receiver, self.coordinator.data.api_mode):
             raise HomeAssistantError("IR is not available for this receiver")
-        code = _ir_code(self._entry, self._receiver_id, key)
-        if code is None:
-            raise HomeAssistantError(missing_message)
         try:
             await self.coordinator.async_send_ir(self._receiver_id, code)
         except UpdateFailed as err:
@@ -323,6 +358,34 @@ class BinaryMoIPReceiverMediaPlayer(
         if cec_index is not None:
             attrs[ATTR_CEC_INDEX] = cec_index
         return attrs
+
+
+def _resolve_service_pronto(
+    pronto: str | None,
+    brand: str | None,
+    command: str | None,
+) -> str:
+    """Validate send_ir service fields and return Pronto hex."""
+    pronto_code = pronto.strip() if isinstance(pronto, str) else ""
+    brand_name = brand.strip() if isinstance(brand, str) else ""
+    command_name = command.strip() if isinstance(command, str) else ""
+
+    if pronto_code and (brand_name or command_name):
+        raise HomeAssistantError(
+            "Provide either 'pronto' or both 'brand' and 'command', not both"
+        )
+    if pronto_code:
+        return pronto_code
+    if brand_name and command_name:
+        try:
+            return resolve_pronto(brand_name, command_name)
+        except ValueError as err:
+            raise HomeAssistantError(str(err)) from err
+    if brand_name or command_name:
+        raise HomeAssistantError("Both 'brand' and 'command' are required together")
+    raise HomeAssistantError(
+        "Provide either 'pronto' or both 'brand' and 'command'"
+    )
 
 
 def _cec_supported(receiver: MoIPReceiver, api_mode: str) -> bool:

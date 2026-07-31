@@ -56,4 +56,9 @@ ATTR_DISPLAY_CONTROL = "display_control"
 ATTR_IR_VOLUME_CONFIGURED = "ir_volume_configured"
 ATTR_IR_MUTE_CONFIGURED = "ir_mute_configured"
 
+SERVICE_SEND_IR = "send_ir"
+ATTR_PRONTO = "pronto"
+ATTR_BRAND = "brand"
+ATTR_COMMAND = "command"
+
 PLATFORMS = ["media_player", "sensor"]
