@@ -74,12 +74,18 @@ def _ensure_homeassistant_stubs() -> None:
     helpers = types.ModuleType("homeassistant.helpers")
     sys.modules["homeassistant.helpers"] = helpers
 
+    config_validation = types.ModuleType("homeassistant.helpers.config_validation")
+    config_validation.string = str
+    sys.modules["homeassistant.helpers.config_validation"] = config_validation
+    helpers.config_validation = config_validation
+
     device_registry = types.ModuleType("homeassistant.helpers.device_registry")
     device_registry.DeviceInfo = dict
     sys.modules["homeassistant.helpers.device_registry"] = device_registry
 
     entity_platform = types.ModuleType("homeassistant.helpers.entity_platform")
     entity_platform.AddConfigEntryEntitiesCallback = object
+    entity_platform.async_get_current_platform = MagicMock()
     sys.modules["homeassistant.helpers.entity_platform"] = entity_platform
 
     update_coordinator = types.ModuleType(
@@ -114,11 +120,42 @@ def _ensure_homeassistant_stubs() -> None:
     debounce.Debouncer = MagicMock
     sys.modules["homeassistant.helpers.debounce"] = debounce
 
+    # voluptuous is an HA dependency; provide a minimal stub if missing.
+    if "voluptuous" not in sys.modules:
+        try:
+            import voluptuous  # noqa: F401
+        except ImportError:
+            vol = types.ModuleType("voluptuous")
+
+            class _Schema:  # noqa: D101
+                def __init__(self, *args, **kwargs):
+                    pass
+
+                def __call__(self, value):
+                    return value
+
+            def _optional(key):
+                return key
+
+            def _in(options):
+                return options
+
+            vol.Schema = _Schema
+            vol.Optional = _optional
+            vol.Required = _optional
+            vol.In = _in
+            sys.modules["voluptuous"] = vol
+
 
 def load_media_player_helpers():
     """Import media_player helpers with Home Assistant stubs."""
     _ensure_homeassistant_stubs()
     adapter = load_adapter_module()
+
+    # Ensure package parents exist for relative imports.
+    _ensure_pkg("custom_components", ROOT / "custom_components")
+    _ensure_pkg("custom_components.binary_moip", COMPONENTS)
+    _load_ir_codes_package()
 
     # media_player imports coordinator; stub it to avoid a full HA stack.
     coordinator_name = "custom_components.binary_moip.coordinator"
@@ -131,3 +168,35 @@ def load_media_player_helpers():
     media_player = _load_module("media_player", COMPONENTS / "media_player.py")
     media_player.MoIPReceiver = adapter.MoIPReceiver
     return media_player
+
+
+def _ensure_pkg(name: str, path: Path) -> None:
+    if name in sys.modules and hasattr(sys.modules[name], "__path__"):
+        return
+    module = types.ModuleType(name)
+    module.__path__ = [str(path)]  # type: ignore[attr-defined]
+    sys.modules[name] = module
+
+
+def _load_ir_codes_package():
+    """Load ir_codes package modules for media_player imports."""
+    ir_dir = COMPONENTS / "ir_codes"
+    _ensure_pkg("custom_components.binary_moip.ir_codes", ir_dir)
+    for name in ("pronto", "samsung", "lg"):
+        full = f"custom_components.binary_moip.ir_codes.{name}"
+        if full not in sys.modules:
+            _load_module_path(full, ir_dir / f"{name}.py")
+    init_name = "custom_components.binary_moip.ir_codes"
+    # Replace namespace stub with real package init if needed.
+    init_path = ir_dir / "__init__.py"
+    if not getattr(sys.modules.get(init_name), "resolve_pronto", None):
+        _load_module_path(init_name, init_path)
+
+
+def _load_module_path(full_name: str, path: Path):
+    spec = importlib.util.spec_from_file_location(full_name, path)
+    assert spec and spec.loader
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[full_name] = module
+    spec.loader.exec_module(module)
+    return module

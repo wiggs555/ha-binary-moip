@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+import pytest
+
 from tests.conftest import load_media_player_helpers
 
 helpers = load_media_player_helpers()
@@ -21,6 +23,7 @@ _display_control = helpers._display_control
 _ir_code = helpers._ir_code
 _ir_supported = helpers._ir_supported
 _mute_ir_configured = helpers._mute_ir_configured
+_resolve_service_pronto = helpers._resolve_service_pronto
 _volume_ir_configured = helpers._volume_ir_configured
 MoIPReceiver = helpers.MoIPReceiver
 
@@ -83,3 +86,27 @@ def test_cec_supported_rest_requires_video_rx() -> None:
         _cec_supported(MoIPReceiver(id=1, name="RX", video_rx_id=10), "rest")
         is True
     )
+
+
+def test_resolve_service_pronto_raw() -> None:
+    assert _resolve_service_pronto(" 0000 006C ", None, None) == "0000 006C"
+
+
+def test_resolve_service_pronto_brand_command() -> None:
+    code = _resolve_service_pronto(None, "samsung", "power_on")
+    assert code.startswith("0000 006D")
+
+
+def test_resolve_service_pronto_rejects_mixed() -> None:
+    with pytest.raises(Exception, match="either 'pronto' or both"):
+        _resolve_service_pronto("0000 006C", "samsung", "power")
+
+
+def test_resolve_service_pronto_requires_both_brand_fields() -> None:
+    with pytest.raises(Exception, match="Both 'brand' and 'command'"):
+        _resolve_service_pronto(None, "samsung", None)
+
+
+def test_resolve_service_pronto_requires_one_mode() -> None:
+    with pytest.raises(Exception, match="Provide either"):
+        _resolve_service_pronto(None, None, None)

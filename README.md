@@ -7,6 +7,7 @@ Home Assistant custom integration for SnapAV Binary MoIP controllers, built on t
 - **Auto-detect API mode** — tries REST (firmware 4.x+) first, falls back to TCP control (port 23)
 - **Media player per receiver** — select video sources and control display power via HDMI CEC or IR
 - **IR volume and mute** — optional Pronto codes for volume up/down and mute toggle on older displays
+- **Send IR service** — blast any Pronto hex, or common Samsung/LG TV commands, from a receiver IR output
 - **Status sensors** — receiver and transmitter online/routing status
 - **Real-time updates** — WebSocket push (REST) or unsolicited TCP routing events, with 60s polling fallback
 
@@ -48,6 +49,38 @@ Notes:
 - Mute is a single toggle code (open-loop; Home Assistant does not track mute state from the display)
 - Leave a Pronto field blank to clear it
 - REST mode requires the receiver’s `ir_rx` association; TCP mode uses the receiver index
+
+### Send IR service
+
+Use `binary_moip.send_ir` to blast IR from any MoIP receiver media player. Provide **either** raw Pronto hex **or** a built-in brand command (not both).
+
+Built-in brands: `samsung`, `lg`. Commands include `power`, `power_on`, `power_off`, `volume_up`, `volume_down`, `mute`, `channel_up`, `channel_down`, `source`, `home`, `menu`, `info`, `up`, `down`, `left`, `right`, `ok`, `back`, `exit`, `hdmi_1`…`hdmi_4`, and digits `0`–`9`. Discrete power and HDMI codes are model-dependent; use raw Pronto when a built-in command does not work.
+
+```yaml
+action: binary_moip.send_ir
+target:
+  entity_id: media_player.living_room
+data:
+  brand: samsung
+  command: power_on
+```
+
+```yaml
+action: binary_moip.send_ir
+target:
+  entity_id: media_player.living_room
+data:
+  brand: lg
+  command: volume_up
+```
+
+```yaml
+action: binary_moip.send_ir
+target:
+  entity_id: media_player.living_room
+data:
+  pronto: "0000 006D 0000 0022 00AC 00AC 0015 0040 ..."
+```
 
 ## Entities
 
