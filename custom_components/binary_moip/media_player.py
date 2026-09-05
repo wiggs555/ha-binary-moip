@@ -25,6 +25,7 @@ from .adapter import MoIPReceiver, MoIPTransmitter
 from .const import (
     API_MODE_TCP,
     ATTR_BRAND,
+    ATTR_CEC_COMMAND,
     ATTR_CEC_INDEX,
     ATTR_CEC_SUPPORTED,
     ATTR_COMMAND,
@@ -35,6 +36,10 @@ from .const import (
     ATTR_IR_VOLUME_CONFIGURED,
     ATTR_PRONTO,
     ATTR_VIDEO_RX_ID,
+    CEC_FORMAT_HEX_COLON,
+    CEC_FORMAT_HEX_SPACE,
+    CEC_FORMAT_TV_OFF,
+    CEC_FORMAT_TV_ON,
     DISPLAY_CONTROL_CEC,
     DISPLAY_CONTROL_IR,
     DOMAIN,
@@ -49,6 +54,7 @@ from .const import (
     OPT_LABEL,
     OPT_RECEIVERS,
     OPT_TRANSMITTERS,
+    SERVICE_SEND_CEC,
     SERVICE_SEND_IR,
     SOURCE_OFF,
 )
@@ -155,6 +161,13 @@ async def async_setup_entry(
             vol.Optional(ATTR_COMMAND): cv.string,
         },
         "async_send_ir_command",
+    )
+    platform.async_register_entity_service(
+        SERVICE_SEND_CEC,
+        {
+            vol.Required(ATTR_CEC_COMMAND): cv.string,
+        },
+        "async_send_cec_command",
     )
 
 
@@ -302,6 +315,23 @@ class BinaryMoIPReceiverMediaPlayer(
         code = _resolve_service_pronto(pronto, brand, command)
         await self._async_blast_ir(code)
 
+    async def async_send_cec_command(self, command: str) -> None:
+        """Send an HDMI CEC frame from this receiver's video output."""
+        cec_format, message = _parse_cec_command(command)
+        receiver = self._receiver
+        if receiver is None or self.coordinator.data is None:
+            raise HomeAssistantError("Receiver is unavailable")
+        if not _cec_supported(receiver, self.coordinator.data.api_mode):
+            raise HomeAssistantError(
+                "HDMI CEC is not available for this receiver"
+            )
+        try:
+            await self.coordinator.async_send_cec(
+                self._receiver_id, cec_format, message
+            )
+        except UpdateFailed as err:
+            raise HomeAssistantError(str(err)) from err
+
     async def _async_send_configured_ir(self, key: str, missing_message: str) -> None:
         code = _ir_code(self._entry, self._receiver_id, key)
         if code is None:
@@ -358,6 +388,40 @@ class BinaryMoIPReceiverMediaPlayer(
         if cec_index is not None:
             attrs[ATTR_CEC_INDEX] = cec_index
         return attrs
+
+
+def _parse_cec_command(command: str) -> tuple[str, str | None]:
+    """Validate send_cec command and return (format, message)."""
+    value = command.strip() if isinstance(command, str) else ""
+    if not value:
+        raise HomeAssistantError("CEC command is empty")
+
+    lowered = value.lower()
+    if lowered in (CEC_FORMAT_TV_ON, CEC_FORMAT_TV_OFF):
+        return lowered, None
+
+    if ":" in value:
+        parts = [part.strip() for part in value.split(":") if part.strip()]
+        cec_format = CEC_FORMAT_HEX_COLON
+        separator = ":"
+    else:
+        parts = value.split()
+        cec_format = CEC_FORMAT_HEX_SPACE
+        separator = " "
+
+    if not parts:
+        raise HomeAssistantError("CEC command is empty")
+
+    bytes_hex: list[str] = []
+    for part in parts:
+        if len(part) > 2 or not all(ch in "0123456789abcdefABCDEF" for ch in part):
+            raise HomeAssistantError(
+                f"Invalid CEC hex byte '{part}'. Use colon- or space-separated hex "
+                f"(e.g. 40:36 or 40 36), or tv_on / tv_off"
+            )
+        bytes_hex.append(part.upper().zfill(2))
+
+    return cec_format, separator.join(bytes_hex)
 
 
 def _resolve_service_pronto(

@@ -23,6 +23,7 @@ _display_control = helpers._display_control
 _ir_code = helpers._ir_code
 _ir_supported = helpers._ir_supported
 _mute_ir_configured = helpers._mute_ir_configured
+_parse_cec_command = helpers._parse_cec_command
 _resolve_service_pronto = helpers._resolve_service_pronto
 _volume_ir_configured = helpers._volume_ir_configured
 MoIPReceiver = helpers.MoIPReceiver
@@ -110,3 +111,31 @@ def test_resolve_service_pronto_requires_both_brand_fields() -> None:
 def test_resolve_service_pronto_requires_one_mode() -> None:
     with pytest.raises(Exception, match="Provide either"):
         _resolve_service_pronto(None, None, None)
+
+
+def test_parse_cec_command_hex_colon() -> None:
+    assert _parse_cec_command(" 40:36 ") == ("hex_colon", "40:36")
+
+
+def test_parse_cec_command_hex_space() -> None:
+    assert _parse_cec_command("40 04") == ("hex_space", "40 04")
+
+
+def test_parse_cec_command_normalizes_nibbles() -> None:
+    assert _parse_cec_command("4:6") == ("hex_colon", "04:06")
+    assert _parse_cec_command("40:44:41") == ("hex_colon", "40:44:41")
+
+
+def test_parse_cec_command_canned() -> None:
+    assert _parse_cec_command("tv_on") == ("tv_on", None)
+    assert _parse_cec_command("TV_OFF") == ("tv_off", None)
+
+
+def test_parse_cec_command_rejects_empty() -> None:
+    with pytest.raises(Exception, match="empty"):
+        _parse_cec_command("   ")
+
+
+def test_parse_cec_command_rejects_invalid_hex() -> None:
+    with pytest.raises(Exception, match="Invalid CEC hex"):
+        _parse_cec_command("40:ZZ")

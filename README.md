@@ -8,6 +8,7 @@ Home Assistant custom integration for SnapAV Binary MoIP controllers, built on t
 - **Media player per receiver** — select video sources and control display power via HDMI CEC or IR
 - **IR volume and mute** — optional Pronto codes for volume up/down and mute toggle on older displays
 - **Send IR service** — blast any Pronto hex, or common Samsung/LG TV commands, from a receiver IR output
+- **Send CEC service** — send ad-hoc HDMI CEC hex frames (or canned TV on/off) from a receiver video output
 - **Status sensors** — receiver and transmitter online/routing status
 - **Real-time updates** — WebSocket push (REST) or unsolicited TCP routing events, with 60s polling fallback
 
@@ -82,11 +83,43 @@ data:
   pronto: "0000 006D 0000 0022 00AC 00AC 0015 0040 ..."
 ```
 
+### Send CEC service
+
+Use `binary_moip.send_cec` to send HDMI CEC from any MoIP receiver media player. Provide a raw hex frame or a canned `tv_on` / `tv_off` command.
+
+Raw frames use colon- or space-separated hex bytes (the first byte is source+destination, then opcode and optional parameters). REST mode posts them to the receiver’s `video_rx` endpoint. TCP mode only supports the canned `tv_on` / `tv_off` commands (`!CEC=RX,1|0`).
+
+```yaml
+action: binary_moip.send_cec
+target:
+  entity_id: media_player.living_room
+data:
+  command: "40:04"
+```
+
+```yaml
+action: binary_moip.send_cec
+target:
+  entity_id: media_player.living_room
+data:
+  command: "40:36"
+```
+
+```yaml
+action: binary_moip.send_cec
+target:
+  entity_id: media_player.living_room
+data:
+  command: tv_on
+```
+
+Common frames (playback device 1 → TV): `40:04` image view on, `40:36` standby. Capture device-specific frames from your display if these do not work.
+
 ## Entities
 
 | Entity | Description |
 |--------|-------------|
-| `media_player.*` | One per receiver — source selection via `select_source`; display power via `turn_on`/`turn_off` (CEC or IR); optional IR `volume_up`/`volume_down`/`volume_mute` |
+| `media_player.*` | One per receiver — source selection via `select_source`; display power via `turn_on`/`turn_off` (CEC or IR); optional IR `volume_up`/`volume_down`/`volume_mute`; `binary_moip.send_cec` for ad-hoc CEC |
 | `sensor.*_status` (receiver) | Online status, paired transmitter attributes |
 | `sensor.*_status` (transmitter) | Online status, input type, unit name |
 

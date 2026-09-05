@@ -12,7 +12,12 @@ from binary_moip import AsyncConfigClient, AsyncControlClient
 from binary_moip.control.protocol import CecMode, IrType, UnsolicitedReceivers
 from binary_moip.exceptions import ApiError, AuthError, CommandError, ConnectionError
 
-from .const import API_MODE_REST, API_MODE_TCP
+from .const import (
+    API_MODE_REST,
+    API_MODE_TCP,
+    CEC_CANNED_FORMATS,
+    CEC_FORMAT_TV_ON,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -377,6 +382,38 @@ class MoIPAdapter:
         assert self._tcp is not None
         rx_index = receiver.index or receiver.id
         await self._tcp.set_cec(rx_index, CecMode.ON if on else CecMode.OFF)
+
+    async def async_send_cec(
+        self,
+        receiver: MoIPReceiver,
+        cec_format: str,
+        message: str | None,
+    ) -> None:
+        """Send an HDMI CEC frame from the receiver's video output."""
+        if self.api_mode == API_MODE_REST:
+            if receiver.video_rx_id is None:
+                raise CommandError(
+                    f"Receiver {receiver.id} has no associated video_rx endpoint"
+                )
+            assert self._rest is not None
+            await self._rest.moip.post_moip_video_rx_id(
+                receiver.video_rx_id,
+                json={"format": cec_format, "message": message},
+            )
+            return
+
+        if cec_format not in CEC_CANNED_FORMATS:
+            raise CommandError(
+                "Raw HDMI CEC frames require REST mode; "
+                "TCP control only supports tv_on and tv_off"
+            )
+
+        assert self._tcp is not None
+        rx_index = receiver.index or receiver.id
+        await self._tcp.set_cec(
+            rx_index,
+            CecMode.ON if cec_format == CEC_FORMAT_TV_ON else CecMode.OFF,
+        )
 
     async def async_send_ir(self, receiver: MoIPReceiver, pronto_code: str) -> None:
         """Blast a Pronto IR code from the receiver's IR output."""

@@ -57,8 +57,16 @@ ATTR_IR_VOLUME_CONFIGURED = "ir_volume_configured"
 ATTR_IR_MUTE_CONFIGURED = "ir_mute_configured"
 
 SERVICE_SEND_IR = "send_ir"
+SERVICE_SEND_CEC = "send_cec"
 ATTR_PRONTO = "pronto"
 ATTR_BRAND = "brand"
 ATTR_COMMAND = "command"
+ATTR_CEC_COMMAND = "command"
+
+CEC_FORMAT_HEX_COLON = "hex_colon"
+CEC_FORMAT_HEX_SPACE = "hex_space"
+CEC_FORMAT_TV_ON = "tv_on"
+CEC_FORMAT_TV_OFF = "tv_off"
+CEC_CANNED_FORMATS = (CEC_FORMAT_TV_ON, CEC_FORMAT_TV_OFF)
 
 PLATFORMS = ["media_player", "sensor"]
