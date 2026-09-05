@@ -27,3 +27,19 @@ send_ir:
       example: power_on
       selector:
         text:
+
+send_cec:
+  name: Send CEC
+  description: Send an HDMI CEC command from a MoIP receiver video output. Provide a raw hex frame or a canned tv_on/tv_off command.
+  target:
+    entity:
+      domain: media_player
+      integration: binary_moip
+  fields:
+    command:
+      name: Command
+      description: Raw CEC hex (colon- or space-separated, e.g. 40:36) or a canned command (tv_on, tv_off). Raw frames require REST mode.
+      required: true
+      example: "40:36"
+      selector:
+        text:

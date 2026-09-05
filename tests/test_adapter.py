@@ -215,6 +215,111 @@ async def test_async_set_tv_power_rest_off() -> None:
 
 
 @pytest.mark.asyncio
+async def test_async_send_cec_rest_hex_colon() -> None:
+    adapter = MoIPAdapter(
+        "192.168.1.10", "admin", "secret", API_MODE_REST, verify_ssl=False
+    )
+    adapter._rest = MagicMock()
+    adapter._rest.moip.post_moip_video_rx_id = AsyncMock()
+
+    receiver = MoIPReceiver(id=1050, name="Living Room", video_rx_id=1052)
+    await adapter.async_send_cec(receiver, "hex_colon", "40:36")
+
+    adapter._rest.moip.post_moip_video_rx_id.assert_awaited_once_with(
+        1052,
+        json={"format": "hex_colon", "message": "40:36"},
+    )
+
+
+@pytest.mark.asyncio
+async def test_async_send_cec_rest_hex_space() -> None:
+    adapter = MoIPAdapter(
+        "192.168.1.10", "admin", "secret", API_MODE_REST, verify_ssl=False
+    )
+    adapter._rest = MagicMock()
+    adapter._rest.moip.post_moip_video_rx_id = AsyncMock()
+
+    receiver = MoIPReceiver(id=1050, name="Living Room", video_rx_id=1052)
+    await adapter.async_send_cec(receiver, "hex_space", "40 04")
+
+    adapter._rest.moip.post_moip_video_rx_id.assert_awaited_once_with(
+        1052,
+        json={"format": "hex_space", "message": "40 04"},
+    )
+
+
+@pytest.mark.asyncio
+async def test_async_send_cec_rest_tv_on() -> None:
+    adapter = MoIPAdapter(
+        "192.168.1.10", "admin", "secret", API_MODE_REST, verify_ssl=False
+    )
+    adapter._rest = MagicMock()
+    adapter._rest.moip.post_moip_video_rx_id = AsyncMock()
+
+    receiver = MoIPReceiver(id=1050, name="Living Room", video_rx_id=1052)
+    await adapter.async_send_cec(receiver, "tv_on", None)
+
+    adapter._rest.moip.post_moip_video_rx_id.assert_awaited_once_with(
+        1052,
+        json={"format": "tv_on", "message": None},
+    )
+
+
+@pytest.mark.asyncio
+async def test_async_send_cec_rest_missing_video_rx() -> None:
+    adapter = MoIPAdapter(
+        "192.168.1.10", "admin", "secret", API_MODE_REST, verify_ssl=False
+    )
+    adapter._rest = MagicMock()
+
+    receiver = MoIPReceiver(id=1050, name="Living Room")
+    with pytest.raises(adapter_mod.CommandError, match="no associated video_rx"):
+        await adapter.async_send_cec(receiver, "hex_colon", "40:36")
+
+
+@pytest.mark.asyncio
+async def test_async_send_cec_tcp_tv_on() -> None:
+    adapter = MoIPAdapter(
+        "192.168.1.10", "admin", "secret", API_MODE_TCP, control_port=23
+    )
+    adapter._tcp = MagicMock()
+    adapter._tcp.set_cec = AsyncMock()
+
+    receiver = MoIPReceiver(id=2, name="Living Room", index=2)
+    await adapter.async_send_cec(receiver, "tv_on", None)
+
+    adapter._tcp.set_cec.assert_awaited_once_with(2, CecMode.ON)
+
+
+@pytest.mark.asyncio
+async def test_async_send_cec_tcp_tv_off() -> None:
+    adapter = MoIPAdapter(
+        "192.168.1.10", "admin", "secret", API_MODE_TCP, control_port=23
+    )
+    adapter._tcp = MagicMock()
+    adapter._tcp.set_cec = AsyncMock()
+
+    receiver = MoIPReceiver(id=3, name="Bedroom")
+    await adapter.async_send_cec(receiver, "tv_off", None)
+
+    adapter._tcp.set_cec.assert_awaited_once_with(3, CecMode.OFF)
+
+
+@pytest.mark.asyncio
+async def test_async_send_cec_tcp_rejects_raw_hex() -> None:
+    adapter = MoIPAdapter(
+        "192.168.1.10", "admin", "secret", API_MODE_TCP, control_port=23
+    )
+    adapter._tcp = MagicMock()
+    adapter._tcp.set_cec = AsyncMock()
+
+    receiver = MoIPReceiver(id=2, name="Living Room", index=2)
+    with pytest.raises(adapter_mod.CommandError, match="REST mode"):
+        await adapter.async_send_cec(receiver, "hex_colon", "40:36")
+    adapter._tcp.set_cec.assert_not_called()
+
+
+@pytest.mark.asyncio
 async def test_async_set_tv_power_rest_missing_video_rx() -> None:
     adapter = MoIPAdapter(
         "192.168.1.10", "admin", "secret", API_MODE_REST, verify_ssl=False

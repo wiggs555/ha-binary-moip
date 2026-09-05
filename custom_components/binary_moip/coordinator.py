@@ -155,6 +155,25 @@ class BinaryMoIPDataUpdateCoordinator(DataUpdateCoordinator[MoIPState]):
         except (ConnectionError, CommandError) as err:
             raise UpdateFailed(str(err)) from err
 
+    async def async_send_cec(
+        self,
+        receiver_id: int,
+        cec_format: str,
+        message: str | None,
+    ) -> None:
+        """Send an HDMI CEC frame from a receiver's video output."""
+        if self.data is None:
+            raise UpdateFailed("MoIP controller state is unavailable")
+        receiver = self.data.receivers.get(receiver_id)
+        if receiver is None:
+            raise UpdateFailed(f"Unknown receiver: {receiver_id}")
+        try:
+            await self.adapter.async_send_cec(receiver, cec_format, message)
+        except AuthError as err:
+            raise ConfigEntryAuthFailed(str(err)) from err
+        except (ConnectionError, CommandError) as err:
+            raise UpdateFailed(str(err)) from err
+
     async def async_send_ir(self, receiver_id: int, pronto_code: str) -> None:
         """Blast a Pronto IR code from a receiver's IR output."""
         if self.data is None:
