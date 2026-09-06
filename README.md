@@ -115,6 +115,35 @@ data:
 
 Common frames (playback device 1 → TV): `40:04` image view on, `40:36` standby. Capture device-specific frames from your display if these do not work.
 
+Canned `tv_off` is a firmware helper; this integration does not control the exact bytes it puts on the wire. Many LG Simplink TVs ignore directed CEC Standby (`40:36`). In REST mode, try these raw frames in order:
+
+| Command | Meaning |
+|---------|---------|
+| `4F:36` | System Standby (broadcast) from Playback 1 |
+| `F0:36` | Standby from Unregistered → TV |
+| `40:44:6D` then `40:45` | User Control Pressed (Power Off) + Released |
+
+```yaml
+action: binary_moip.send_cec
+target:
+  entity_id: media_player.living_room
+data:
+  command: "4F:36"
+```
+
+No hex is guaranteed — Pulse-Eight’s vendor matrix lists LG TV Power Off as unsupported on many models. Confirm Simplink / HDMI CEC is enabled on the TV. If CEC still does nothing, use IR:
+
+```yaml
+action: binary_moip.send_ir
+target:
+  entity_id: media_player.living_room
+data:
+  brand: lg
+  command: power_off
+```
+
+Or set that receiver’s **Display power control** to **IR** so `media_player.turn_off` blasts Pronto instead of CEC.
+
 ## Entities
 
 | Entity | Description |

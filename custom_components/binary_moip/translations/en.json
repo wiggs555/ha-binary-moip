@@ -81,7 +81,7 @@
       "fields": {
         "command": {
           "name": "Command",
-          "description": "Raw CEC hex (colon- or space-separated, e.g. 40:36) or a canned command (tv_on, tv_off). Raw frames require REST mode."
+          "description": "Raw CEC hex (colon- or space-separated, e.g. 40:36 or 4F:36) or a canned command (tv_on, tv_off). Raw frames require REST mode. LG TVs that ignore tv_off often accept 4F:36; otherwise use send_ir."
         }
       }
     }
